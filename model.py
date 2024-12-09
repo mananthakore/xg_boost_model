@@ -183,42 +183,45 @@ def get_options(uploaded_feedback):
         return[{"label": col, "value": col} for col in uploaded_data.select_dtypes(include=np.number).columns ]
     return []
 
-# _______________Train Component_____________________________
 
-#two things need to happen. First, we need to show the check list of all the features in the
+# _______________Train Component_____________________________
 @app.callback(
-     [Output('model-feedback', 'children')],
+    Output('model-feedback', 'children'),
     [Input('train-button', 'n_clicks')],
     [State('target-dropdown', 'value'),
      State('features-checkboxes', 'value')]
 )
 def train_model(n_clicks, target, selected_features):
+    global model  # Ensuring the model is accessible globally for predictions
+    
     if n_clicks is None:
-        return ["Please click 'Train Model' to start training."]
+        return "Click 'Train Model' to start training."
 
-    # Debugging: Print target and selected features to see what is being passed
-    print(f"Target selected: {target}")
-    print(f"Selected features: {selected_features}")
-
-    # If there is no data, target, or selected features, return an error message
-    if uploaded_data is None or not target or not selected_features:
-        return ["Error: Missing data, target, or features."]
-
-    # Prepare the data for training
+    if uploaded_data is None:
+        return "Error: No data uploaded. Please upload a dataset."
+    
+    if not target:
+        return "Error: No target variable selected."
+    
+    if not selected_features:
+        return "Error: No features selected for training."
+    
     try:
-        # Ensure the target and all selected features are in the dataframe
-        features_and_target = selected_features + [target]
+        # Extract features and target
         X = uploaded_data[selected_features]
         y = uploaded_data[target]
 
-        # Split the data
+        # Handle missing values
+        X = X.fillna(X.mean())
+        y = y.fillna(y.median())
+
+        # Split data into train/test sets
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-        # Identify numeric and categorical columns
-        numeric_features = X.select_dtypes(include=['number']).columns.tolist()
-        categorical_features = X.select_dtypes(include=['object', 'category']).columns.tolist()
+        # Define preprocessing pipeline
+        numeric_features = X.select_dtypes(include=['number']).columns
+        categorical_features = X.select_dtypes(include=['object']).columns
 
-        # Define the preprocessing steps for each type of data
         preprocessor = ColumnTransformer(
             transformers=[
                 ('num', Pipeline([
@@ -231,74 +234,55 @@ def train_model(n_clicks, target, selected_features):
                 ]), categorical_features)
             ])
 
-        # Create the regression pipeline
-        global model  # Make sure to update the global model
-        model = Pipeline([
+        # Build pipeline with a regression model
+        model = Pipeline(steps=[
             ('preprocessor', preprocessor),
-            ('regressor', XGBRegressor(random_state=43, verbosity=1))
+            ('regressor', XGBRegressor(n_estimators=100, max_depth=3, random_state=42))
         ])
 
-        # Simplified parameter grid to reduce computational complexity
-        param_grid = {
-            'regressor__n_estimators': [200, 300],
-            'regressor__max_depth': [3, 5, 7],
-            'regressor__learning_rate': [0.05, 0.1],
-            'regressor__subsample': [0.8, 1.0],
-            'regressor__colsample_bytree': [0.8, 1.0],
-            'regressor__reg_alpha': [0, 0.1, 1],
-            'regressor__reg_lambda': [1, 10]
-        }
+        # Train the model
+        model.fit(X_train, y_train)
 
-        grid_search = GridSearchCV(
-            estimator=model,
-            param_grid=param_grid,
-            cv=3,
-            scoring='r2',
-            verbose=1,
-            n_jobs=-1,
-            error_score='raise'  # This will help diagnose any fitting errors
-        )
+        # Evaluate the model
+        y_pred = model.predict(X_test)
+        r2 = r2_score(y_test, y_pred)
 
-        # Fit the grid search
-        grid_search.fit(X_train, y_train)
-
-        # Get the best model
-        best_model = grid_search.best_estimator_
-
-        # Make predictions
-        y_pred = best_model.predict(X_test)
-
-        # Calculate R2 score
-        r2_score_final = r2_score(y_test, y_pred)
-
-        return [f"Model trained successfully! R^2 score: {r2_score_final:.4f}"]
+        return f"Model trained successfully! R^2 score: {r2:.4f}"
 
     except Exception as e:
-        # Catch and print any errors during the training process
-        print(f"Error during model training: {e}")
-        return [f"Error during model training: {e}"]
-
-
-
-
+        return f"Error during training: {e}"
 
 
 # _______________Predict Component_____________________________
-
 @app.callback(
     Output('prediction-output', 'children'),
-    Input('predict-button', 'n_clicks'),
-    State('predict-input', 'value')
+    [Input('predict-button', 'n_clicks')],
+    [State('predict-input', 'value'),  # Get input values
+     State('features-checkboxes', 'value')]  # Get selected feature names
 )
-def make_prediction(n_clicks, input_values):
-    if model is None or not input_values:
-        return "Error: Model not trained or invalid input."
+def make_prediction(n_clicks, input_values, selected_features):
+    if n_clicks is None or not input_values or not selected_features:
+        return "Please enter feature values and select features before predicting."
+
     try:
-        features = list(map(float, input_values.split(',')))
-        prediction = model.predict([features])
-        return f"Predicted value: {prediction[0]:.2f}"
+        # Convert input_values (string) to a list of floats
+        input_data = [float(value) for value in input_values.split(',')]
+        
+        # Ensure input length matches the number of selected features
+        if len(input_data) != len(selected_features):
+            return f"Error: Expected {len(selected_features)} features, but got {len(input_data)}."
+
+        # Convert input into a DataFrame with column names
+        input_df = pd.DataFrame([input_data], columns=selected_features)
+
+        # Make prediction using the trained model
+        prediction = model.predict(input_df)
+        return f"Prediction: {prediction[0]}"
+    except ValueError as e:
+        return f"Error: Invalid input format. Ensure all inputs are numeric and separated by commas. ({str(e)})"
     except Exception as e:
-        return f"Error: {e}"
+        return f"Error: {str(e)}"
+
 
 
 # _______________Run App_____________________________
