@@ -8,7 +8,7 @@ from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.pipeline import Pipeline
 from sklearn.linear_model import LinearRegression
 from xgboost import XGBRegressor
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.preprocessing import OneHotEncoder, StandardScaler, PolynomialFeatures
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
 from sklearn.metrics import r2_score
@@ -184,28 +184,28 @@ def get_options(uploaded_feedback):
     return []
 
 
-# _______________Train Component_____________________________
 @app.callback(
     Output('model-feedback', 'children'),
     [Input('train-button', 'n_clicks')],
     [State('target-dropdown', 'value'),
      State('features-checkboxes', 'value')]
 )
+
 def train_model(n_clicks, target, selected_features):
-    global model  # Ensuring the model is accessible globally for predictions
-    
+    global model
+
     if n_clicks is None:
         return "Click 'Train Model' to start training."
 
     if uploaded_data is None:
         return "Error: No data uploaded. Please upload a dataset."
-    
+
     if not target:
         return "Error: No target variable selected."
-    
+
     if not selected_features:
         return "Error: No features selected for training."
-    
+
     try:
         # Extract features and target
         X = uploaded_data[selected_features]
@@ -215,76 +215,34 @@ def train_model(n_clicks, target, selected_features):
         X = X.fillna(X.mean())
         y = y.fillna(y.median())
 
-        # Split data into train/test sets
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+        # Scaling features
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
 
-        # Define preprocessing pipeline
-        numeric_features = X.select_dtypes(include=['number']).columns
-        categorical_features = X.select_dtypes(include=['object']).columns
+        # Train-test split
+        X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=43)
 
-        preprocessor = ColumnTransformer(
-            transformers=[
-                ('num', Pipeline([
-                    ('imputer', SimpleImputer(strategy='mean')),
-                    ('scaler', StandardScaler())
-                ]), numeric_features),
-                ('cat', Pipeline([
-                    ('imputer', SimpleImputer(strategy='most_frequent')),
-                    ('onehot', OneHotEncoder(handle_unknown='ignore'))
-                ]), categorical_features)
-            ])
+        # Adding polynomial features for potential interactions (optional)
+        poly = PolynomialFeatures(degree=2, interaction_only=True, include_bias=False)
+        X_train = poly.fit_transform(X_train)
+        X_test = poly.transform(X_test)
 
-        # Build pipeline with a regression model
-        model = Pipeline(steps=[
-            ('preprocessor', preprocessor),
-            ('regressor', XGBRegressor(n_estimators=100, max_depth=3, random_state=42))
-        ])
+        # Linear Regression
+        lr = LinearRegression()
+        lr.fit(X_train, y_train)
+        model = lr
 
-        # Train the model
-        model.fit(X_train, y_train)
+        # Predictions
+        y_pred = lr.predict(X_test)
 
-        # Evaluate the model
-        y_pred = model.predict(X_test)
+        # R² Score
         r2 = r2_score(y_test, y_pred)
 
-        return f"Model trained successfully! R^2 score: {r2:.4f}"
+        return f"Model trained successfully using Linear Regression! R² score: {r2:.4f}"
 
     except Exception as e:
         return f"Error during training: {e}"
-
-
-# _______________Predict Component_____________________________
-@app.callback(
-    Output('prediction-output', 'children'),
-    [Input('predict-button', 'n_clicks')],
-    [State('predict-input', 'value'),  # Get input values
-     State('features-checkboxes', 'value')]  # Get selected feature names
-)
-def make_prediction(n_clicks, input_values, selected_features):
-    if n_clicks is None or not input_values or not selected_features:
-        return "Please enter feature values and select features before predicting."
-
-    try:
-        # Convert input_values (string) to a list of floats
-        input_data = [float(value) for value in input_values.split(',')]
-        
-        # Ensure input length matches the number of selected features
-        if len(input_data) != len(selected_features):
-            return f"Error: Expected {len(selected_features)} features, but got {len(input_data)}."
-
-        # Convert input into a DataFrame with column names
-        input_df = pd.DataFrame([input_data], columns=selected_features)
-
-        # Make prediction using the trained model
-        prediction = model.predict(input_df)
-        return f"Prediction: {prediction[0]}"
-    except ValueError as e:
-        return f"Error: Invalid input format. Ensure all inputs are numeric and separated by commas. ({str(e)})"
-    except Exception as e:
-        return f"Error: {str(e)}"
-
-
-
+    
 # _______________Run App_____________________________
 
 if __name__ == '__main__':
