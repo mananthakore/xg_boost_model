@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.pipeline import Pipeline
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import LinearRegression, Ridge
 from xgboost import XGBRegressor
 from sklearn.preprocessing import OneHotEncoder, StandardScaler, PolynomialFeatures
 from sklearn.compose import ColumnTransformer
@@ -215,30 +215,33 @@ def train_model(n_clicks, target, selected_features):
         X = X.fillna(X.mean())
         y = y.fillna(y.median())
 
-        # Scaling features
+        # Feature scaling
         scaler = StandardScaler()
         X_scaled = scaler.fit_transform(X)
 
-        # Train-test split
-        X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=43)
-
-        # Adding polynomial features for potential interactions (optional)
+        # Adding polynomial features for potential interactions
         poly = PolynomialFeatures(degree=2, interaction_only=True, include_bias=False)
-        X_train = poly.fit_transform(X_train)
-        X_test = poly.transform(X_test)
+        X_scaled_poly = poly.fit_transform(X_scaled)
 
-        # Linear Regression
-        lr = LinearRegression()
-        lr.fit(X_train, y_train)
-        model = lr
+        # Train-test split
+        X_train, X_test, y_train, y_test = train_test_split(X_scaled_poly, y, test_size=0.2, random_state=43)
+
+        # Ridge Regression with GridSearchCV (removed 'normalize' parameter)
+        param_grid = {'alpha': np.logspace(-5, 5, 11)}  # Finer alpha grid
+        ridge = Ridge()  # No 'normalize' parameter here
+        grid_search = GridSearchCV(ridge, param_grid, cv=5, scoring='r2')
+        grid_search.fit(X_train, y_train)
+
+        # Best model after grid search
+        model = grid_search.best_estimator_
 
         # Predictions
-        y_pred = lr.predict(X_test)
+        y_pred = model.predict(X_test)
 
         # R² Score
         r2 = r2_score(y_test, y_pred)
 
-        return f"Model trained successfully using Linear Regression! R² score: {r2:.4f}"
+        return f"Model trained successfully with best Ridge Regression alpha: {grid_search.best_params_['alpha']}. R² score: {r2:.4f}"
 
     except Exception as e:
         return f"Error during training: {e}"
