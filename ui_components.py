@@ -3,10 +3,8 @@ import dash_bootstrap_components as dbc
 
 def create_layout():
     return dbc.Container([
-        # Header
         dbc.Row(dbc.Col(html.H1("Regression Prediction App", className="text-center my-4"))),
 
-        # Upload Dataset Section
         dbc.Row([
             dbc.Col([
                 html.H2("1. Upload Dataset"),
@@ -24,7 +22,6 @@ def create_layout():
             ], width=6),
         ]),
 
-        # Target Variable Selection
         dbc.Row([
             dbc.Col([
                 html.H2("2. Select Target Variable"),
@@ -32,7 +29,6 @@ def create_layout():
             ], width=6),
         ]),
 
-        # Data Analysis Section
         dbc.Row([
             dbc.Col([
                 html.H2("3. Analyze Data"),
@@ -46,7 +42,6 @@ def create_layout():
             ], width=12)
         ]),
 
-        # Model Training Section
         dbc.Row([
             dbc.Col([
                 html.H2("4. Train Model"),
@@ -56,7 +51,6 @@ def create_layout():
             ], width=12)
         ]),
 
-        # Prediction Section
         dbc.Row([
             dbc.Col([
                 html.H2("5. Make Predictions"),

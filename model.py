@@ -16,18 +16,14 @@ import plotly.express as px
 import dash_bootstrap_components as dbc
 from ui_components import create_layout
 
-# Initialize app
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 
-# Global variables
 uploaded_data = None
 model = None
 
-# App layout
 app.layout = html.Div([
     html.H1("Regression Prediction App"),
 
-    # Upload Component
     html.Div([
         html.H2("1. Upload Dataset"),
         dcc.Upload(
@@ -38,14 +34,12 @@ app.layout = html.Div([
         html.Div(id='upload-feedback')
     ], style={'margin-bottom': '20px'}),
 
-    # Select Target Component
     html.Div([  # this is where target variables are selected.
         html.H2("2. Select Target Variable"),
         dcc.Dropdown(id='target-dropdown', placeholder='Select the target variable'),
         html.Div(id='target-feedback')
     ], style={'margin-bottom': '20px'}),
 
-    # Bar Charts Component
     html.Div([
         html.H2("3. Analyze Data"),
         html.Div([
@@ -55,7 +49,7 @@ app.layout = html.Div([
         dcc.Graph(id='correlation-barchart')
     ], style={'margin-bottom': '20px'}),
 
-    # Train Component
+
     html.Div([
         html.H2("4. Train Model"),
         html.Div([dcc.Checklist(
@@ -64,7 +58,7 @@ app.layout = html.Div([
         html.Div(id='model-feedback')
     ], style={'margin-bottom': '20px'}),
 
-    # Predict Component
+
     html.Div([
         html.H2("5. Make Predictions"),
         dcc.Input(id='predict-input', placeholder='Enter feature values(make sure each feature has a value, followed by a comma)...', style={'width': '80%'}),
@@ -149,21 +143,17 @@ def update_barcharts(target, categorical_var):
     if uploaded_data is None or target is None:
         return [], {}, {}
 
-    # Filter numeric columns only for correlation computation
     numeric_data = uploaded_data.select_dtypes(include=[np.number])
 
-    # Categorical columns for dropdown
     cat_cols = uploaded_data.select_dtypes(include=['object']).columns
     categorical_options = [{'label': col, 'value': col} for col in cat_cols]
 
-    # First bar chart (categorical variable vs target)
     if categorical_var:
         avg_values = uploaded_data.groupby(categorical_var)[target].mean()
         category_chart = px.bar(avg_values, x=avg_values.index, y=avg_values.values, title='Average Target by Category')
     else:
         category_chart = {}
 
-    # Second bar chart (correlation of numeric features with target)
     if numeric_data.empty:
         corr_chart = {}
     else:
@@ -217,15 +207,12 @@ def train_model(n_clicks, target, selected_features):
         return "Error: No features selected for training."
 
     try:
-        # Extract features and target
         X = uploaded_data[selected_features]
         y = uploaded_data[target]
 
 
-        # Split data into train/test sets
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-        # Define preprocessing pipeline
         numeric_features = X.select_dtypes(include=['number']).columns
         categorical_features = X.select_dtypes(include=['object']).columns
 
@@ -241,17 +228,14 @@ def train_model(n_clicks, target, selected_features):
                 ]), categorical_features)
             ])
 
-        # Build the pipeline with an XGBoost regressor
         model = Pipeline(steps=[
             ('preprocessor', preprocessor),
             ('regressor', XGBRegressor(n_estimators=200, max_depth=3,learning_rate = 0.3,subsample=1.0, random_state=42))
             #{'regressor__learning_rate': 0.3, 'regressor__max_depth': 3, 'regressor__n_estimators': 200, 'regressor__subsample': 1.0} | R^2 score on test set: 0.6002
         ])
 
-        # Train the model
         model.fit(X_train, y_train)
 
-        # Evaluate the model
         y_pred = model.predict(X_test)
         r2 = r2_score(y_test, y_pred)
 
@@ -274,17 +258,13 @@ def make_prediction(n_clicks, input_values, selected_features):
         return "Please enter feature values and select features before predicting."
 
     try:
-        # Convert input_values (string) to a list of floats
         input_data = [float(value) for value in input_values.split(',')]
 
-        # Ensure input length matches the number of selected features
         if len(input_data) != len(selected_features):
             return f"Error: Expected {len(selected_features)} features, but got {len(input_data)}."
 
-        # Convert input into a DataFrame with column names
         input_df = pd.DataFrame([input_data], columns=selected_features)
 
-        # Ensure pipeline preprocessing is applied before prediction
         prediction = model.predict(input_df)
         return f"Prediction: {prediction[0]}"
     except ValueError as e:
