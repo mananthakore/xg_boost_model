@@ -244,7 +244,8 @@ def train_model(n_clicks, target, selected_features):
         # Build the pipeline with an XGBoost regressor
         model = Pipeline(steps=[
             ('preprocessor', preprocessor),
-            ('regressor', XGBRegressor(n_estimators=100, max_depth=3, random_state=42))
+            ('regressor', XGBRegressor(n_estimators=200, max_depth=3,learning_rate = 0.3,subsample=1.0, random_state=42))
+            #{'regressor__learning_rate': 0.3, 'regressor__max_depth': 3, 'regressor__n_estimators': 200, 'regressor__subsample': 1.0} | R^2 score on test set: 0.6002
         ])
 
         # Train the model
