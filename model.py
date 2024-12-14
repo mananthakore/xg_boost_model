@@ -6,9 +6,9 @@ import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.pipeline import Pipeline
-from sklearn.linear_model import LinearRegression, Ridge
+from sklearn.linear_model import LinearRegression
 from xgboost import XGBRegressor
-from sklearn.preprocessing import OneHotEncoder, StandardScaler, PolynomialFeatures
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
 from sklearn.metrics import r2_score
@@ -37,7 +37,7 @@ app.layout = html.Div([
     ], style={'margin-bottom': '20px'}),
 
     # Select Target Component
-    html.Div([ #this is where target variables are selected.
+    html.Div([  # this is where target variables are selected.
         html.H2("2. Select Target Variable"),
         dcc.Dropdown(id='target-dropdown', placeholder='Select the target variable'),
         html.Div(id='target-feedback')
@@ -65,11 +65,12 @@ app.layout = html.Div([
     # Predict Component
     html.Div([
         html.H2("5. Make Predictions"),
-        dcc.Input(id='predict-input', placeholder='Enter feature values...', style={'width': '80%'}),
+        dcc.Input(id='predict-input', placeholder='Enter feature values(make sure each feature has a value, followed by a comma)...', style={'width': '80%'}),
         html.Button('Predict', id='predict-button'),
         html.Div(id='prediction-output')
     ])
 ])
+
 
 # _______________helper functions_____________________________
 # def preprocessing(uploaded_da):
@@ -130,7 +131,7 @@ def handle_upload(contents, filename):
 def update_target_dropdown(upload_feedback):
     if uploaded_data is not None:
         numerical_cols = uploaded_data.select_dtypes(include=np.number).columns
-        return [{'label': col,  'value': col} for col in numerical_cols]
+        return [{'label': col, 'value': col} for col in numerical_cols]
     return []
 
 
@@ -169,21 +170,28 @@ def update_barcharts(target, categorical_var):
 
     return categorical_options, category_chart, corr_chart
 
-#---------get checkboxes
-#input is the uploaded data,
-#output should be the checkboxes of ALL the columns.
+
+# ---------get checkboxes
+# input is the uploaded data,
+# output should be the checkboxes of ALL the columns.
 @app.callback(
     Output('features-checkboxes', 'options'),
     Input('upload-feedback', 'children')
-    #https://chatgpt.com/share/67508cf8-e690-8002-8af3-df68537a651d
 )
-
 def get_options(uploaded_feedback):
     if uploaded_data is not None:
-        return[{"label": col, "value": col} for col in uploaded_data.select_dtypes(include=np.number).columns ]
+        # Get numerical and categorical columns
+        numerical_columns = uploaded_data.select_dtypes(include=np.number).columns
+        categorical_columns = uploaded_data.select_dtypes(include=['object', 'category']).columns
+
+        options = [{"label": f"{col}", "value": col} for col in numerical_columns] + \
+                  [{"label": f"{col}", "value": col} for col in categorical_columns]
+
+        return options
+
     return []
 
-
+# _______________Train Component_____________________________
 @app.callback(
     Output('model-feedback', 'children'),
     [Input('train-button', 'n_clicks')],
@@ -192,7 +200,7 @@ def get_options(uploaded_feedback):
 )
 
 def train_model(n_clicks, target, selected_features):
-    global model
+    global model  # Ensure the model is globally accessible
 
     if n_clicks is None:
         return "Click 'Train Model' to start training."
@@ -211,41 +219,77 @@ def train_model(n_clicks, target, selected_features):
         X = uploaded_data[selected_features]
         y = uploaded_data[target]
 
-        # Handle missing values
-        X = X.fillna(X.mean())
-        y = y.fillna(y.median())
 
-        # Feature scaling
-        scaler = StandardScaler()
-        X_scaled = scaler.fit_transform(X)
+        # Split data into train/test sets
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-        # Adding polynomial features for potential interactions
-        poly = PolynomialFeatures(degree=2, interaction_only=True, include_bias=False)
-        X_scaled_poly = poly.fit_transform(X_scaled)
+        # Define preprocessing pipeline
+        numeric_features = X.select_dtypes(include=['number']).columns
+        categorical_features = X.select_dtypes(include=['object']).columns
 
-        # Train-test split
-        X_train, X_test, y_train, y_test = train_test_split(X_scaled_poly, y, test_size=0.2, random_state=43)
+        preprocessor = ColumnTransformer(
+            transformers=[
+                ('num', Pipeline([
+                    ('imputer', SimpleImputer(strategy='mean')),
+                    ('scaler', StandardScaler())
+                ]), numeric_features),
+                ('cat', Pipeline([
+                    ('imputer', SimpleImputer(strategy='most_frequent')),
+                    ('onehot', OneHotEncoder(handle_unknown='ignore', sparse_output=False))
+                ]), categorical_features)
+            ])
 
-        # Ridge Regression with GridSearchCV (removed 'normalize' parameter)
-        param_grid = {'alpha': np.logspace(-5, 5, 11)}  # Finer alpha grid
-        ridge = Ridge()  # No 'normalize' parameter here
-        grid_search = GridSearchCV(ridge, param_grid, cv=5, scoring='r2')
-        grid_search.fit(X_train, y_train)
+        # Build the pipeline with an XGBoost regressor
+        model = Pipeline(steps=[
+            ('preprocessor', preprocessor),
+            ('regressor', XGBRegressor(n_estimators=100, max_depth=3, random_state=42))
+        ])
 
-        # Best model after grid search
-        model = grid_search.best_estimator_
+        # Train the model
+        model.fit(X_train, y_train)
 
-        # Predictions
+        # Evaluate the model
         y_pred = model.predict(X_test)
-
-        # R² Score
         r2 = r2_score(y_test, y_pred)
 
-        return f"Model trained successfully with best Ridge Regression alpha: {grid_search.best_params_['alpha']}. R² score: {r2:.4f}"
-
+        return f"Model trained successfully! R^2 score: {r2:.4f}"
     except Exception as e:
         return f"Error during training: {e}"
-    
+
+
+# _______________Predict Component_____________________________
+@app.callback(
+    Output('prediction-output', 'children'),
+    [Input('predict-button', 'n_clicks')],
+    [State('predict-input', 'value'),  # Input feature values
+     State('features-checkboxes', 'value')]  # Selected feature names
+)
+def make_prediction(n_clicks, input_values, selected_features):
+    global model  # Use the trained model
+
+    if n_clicks is None or not input_values or not selected_features:
+        return "Please enter feature values and select features before predicting."
+
+    try:
+        # Convert input_values (string) to a list of floats
+        input_data = [float(value) for value in input_values.split(',')]
+
+        # Ensure input length matches the number of selected features
+        if len(input_data) != len(selected_features):
+            return f"Error: Expected {len(selected_features)} features, but got {len(input_data)}."
+
+        # Convert input into a DataFrame with column names
+        input_df = pd.DataFrame([input_data], columns=selected_features)
+
+        # Ensure pipeline preprocessing is applied before prediction
+        prediction = model.predict(input_df)
+        return f"Prediction: {prediction[0]}"
+    except ValueError as e:
+        return f"Error: Invalid input format. Ensure all inputs are numeric and separated by commas. ({str(e)})"
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+
 # _______________Run App_____________________________
 
 if __name__ == '__main__':
