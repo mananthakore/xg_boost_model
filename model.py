@@ -13,9 +13,11 @@ from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
 from sklearn.metrics import r2_score
 import plotly.express as px
+import dash_bootstrap_components as dbc
+from ui_components import create_layout
 
 # Initialize app
-app = dash.Dash(__name__)
+app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 
 # Global variables
 uploaded_data = None
